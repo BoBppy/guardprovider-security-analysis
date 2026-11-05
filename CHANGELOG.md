@@ -1,9 +1,18 @@
 # Changelog
 
+## 2026-11-05 — v1.2
+
+- Added `docs/LOCAL-DATA.md`: at-rest inventory, retention of the AI Guard artefacts, reachability matrix, and privilege-surface analysis.
+- Added §3.6 (local data at rest) and §3.7 (reachability for an ordinary app) to both reports.
+- **Added F-12.** `files/feedback01.tmp` (raw call audio) and `files/clip01.tmp` (screen clip) stay in plaintext when an alert is raised and the user does not act.
+- Documented that the package has no self-scheduled collection: no boot receiver, no package-add receiver, no periodic work; scans are caller-driven and AI Guard is call-driven.
+- Added §14 disclosure path: none of the findings is a strong CVE candidate; the recommended route is a privacy complaint plus a PSIRT note.
+- Fixed an obsolete line reference (`p098o1/h.java:65` → `:49`).
+
 ## 2026-11-05 — v1.1
 
 - Reconstructed the AI Guard capture chain end to end (`docs/AI-GUARD.md`).
-- **Corrected F-05.** It is not an `AudioRecordingCallback` on `VOICE_CALL`; `p098o1/h.java:65` opens two `AudioRecord` streams (near-end `VOICE_COMMUNICATION` and a far-end `AudioPolicy` loopback with `ROUTE_FLAG_RENDER|ROUTE_FLAG_LOOP_BACK`) and averages them into one 16 kHz mono stream. Severity raised Medium → High.
+- **Corrected F-05.** It is not an `AudioRecordingCallback` on `VOICE_CALL`; `p098o1/h.java:49` opens two `AudioRecord` streams (near-end `VOICE_COMMUNICATION` and a far-end `AudioPolicy` loopback with `ROUTE_FLAG_RENDER|ROUTE_FLAG_LOOP_BACK`) and averages them into one 16 kHz mono stream. Severity raised Medium → High.
 - **Added F-11.** Screen capture uses a reflective `IMediaProjectionManager.createProjection()` under `MANAGE_MEDIA_PROJECTION`, so neither the system consent dialog nor the capture indicator appears. `MediaRecorder` writes 3-second H.264 clips that are uploaded and repeated every 5 seconds.
 - Documented cadence and retention: transcript every 10 s, video clips every ~5 s, service lifetime 10 min, raw PCM in `files/feedback01.tmp`, clip copy in `files/clip01.tmp`.
 - Established that the ongoing notification ("通话防护中") does not mention capture, while the one-time privacy notice does disclose "call audio" and "video frames or clips".

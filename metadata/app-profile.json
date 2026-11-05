@@ -327,6 +327,12 @@
       "severity": "high",
       "title": "screen recording via reflective MediaProjection under MANAGE_MEDIA_PROJECTION, bypassing the system consent dialog and capture indicator; 3-second MP4 clips uploaded every ~5 s",
       "cwe": "CWE-359, CWE-693"
+    },
+    {
+      "id": "F-12",
+      "severity": "medium",
+      "title": "raw call audio (files/feedback01.tmp) and a screen clip (files/clip01.tmp) remain in plaintext when an alert is raised and no user action follows",
+      "cwe": "CWE-359, CWE-212"
     }
   ],
   "ai_guard_capture": {
@@ -357,5 +363,43 @@
       "one_time_notice": "ai_guard_privacy_policy_message discloses 'call audio' and 'video frames or clips'",
       "system_capture_indicator": false
     }
+  },
+  "local_data": {
+    "app_private_only": true,
+    "external_storage": false,
+    "allowBackup": false,
+    "sharedUserId": null,
+    "stores": [
+      {
+        "path": "databases/flamingo.db",
+        "content": "virus definitions, whitelist, engine metadata",
+        "sensitivity": "low"
+      },
+      {
+        "path": "shared_prefs/ai_guard_daily_report.xml",
+        "content": "per-scene detection counters",
+        "sensitivity": "low"
+      },
+      {
+        "path": "files/feedback01.tmp",
+        "content": "raw call audio, PCM 16 kHz mono",
+        "sensitivity": "high",
+        "retention": "deleted at teardown only if no alert was raised"
+      },
+      {
+        "path": "files/clip01.tmp",
+        "content": "copy of a confirmed screen clip, MP4",
+        "sensitivity": "high",
+        "retention": "same as above"
+      },
+      {
+        "path": "cache/clip_*.tmp",
+        "content": "transient recording before upload",
+        "sensitivity": "high",
+        "retention": "deleted after upload"
+      }
+    ],
+    "reachable_by_unprivileged_app": false,
+    "reachable_by": "only holders of com.miui.guardprovider.permission.Guard_Provider (signature|privileged)"
   }
 }

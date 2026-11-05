@@ -17,7 +17,7 @@
 
 与对照样本不同，它的组件暴露面是**正确防护**的：所有自定义导出组件都要求 `signature|privileged` 权限。问题出在它自己云端协议的**密码学设计**上，而不是访问控制。
 
-六条判断：
+七条判断：
 
 1. **报文信封密钥就在 APK 里。** `J1/i.java` 从 `META-INF/flamingo.dat`（偏移 144，与常量异或）导出 16 字节 AES 密钥。该构建的每一次安装共用同一密钥；密钥 SHA-256 为 `229c6c76…`。这里的"加密"对持有 APK 的人只是混淆。
 2. **请求认证是一个硬编码盐。** `sign = MD5(Base64(排序后的参数 + "&" + "94e6cec2-19dc-4bb6-823c-613f72d3ea16"))`，`mi` 由 `ANDROID_ID` 派生。没有每设备凭据，也没有 nonce。持有 APK 加任意 `ANDROID_ID` 即可构造被接受的请求。
@@ -25,6 +25,7 @@
 4. **白名单没有签名校验。** `p152x1/f.java` 解析下载的 JSON 后直接清表重写；恒返回 `false` 的 `b(String,String)` 是被移除的完整性校验的残留。
 5. **AI 防护同时采集通话双方的声音与屏幕，并把它们上传。** `p098o1/h.java:49` 同时打开两路 `AudioRecord`——`VOICE_COMMUNICATION`（近端）与经隐藏 `AudioPolicy` 接口建立的回环（远端，`ROUTE_FLAG_RENDER|ROUTE_FLAG_LOOP_BACK`，`p098o1/f.java:27`），逐采样点取平均后合成 16 kHz 单声道，因此**对方的声音同样被采集**。视频路径由 `p079l1/a.java` 驱动 `MediaRecorder`（H.264、720×1280、24 fps），其 `MediaProjection` 通过反射在 `MANAGE_MEDIA_PROJECTION` 下取得，**录 3 秒**后由 `AiGuardService.C()` 将 MP4 以 base64 发往 `/aiVideo/pcc/detection`，再等 2 秒进入下一轮。转写文本每 10 秒发往 `/ai/audio/text/pcc/detection`。
 6. **未发现未认证读取。** `api.sec.miui.com` 在缺少签名参数时返回 `{"error_code":"10012","error":"Illegal request"}`；`virus-engine` 返回 `405 Allow: POST`。端点确实执行校验，但校验所依赖的秘密是公开的。
+7. **本地数据对普通应用不可达。** 所有自定义导出组件均由 `signature|privileged` 保护，无 `sharedUserId`、不写外部存储、不实现 `openFile`；AI 防护产物的特殊之处是敏感度高，而不是可达性高。与对照的 DM 客户端形成鲜明反差，见 [`docs/LOCAL-DATA.md`](docs/LOCAL-DATA.md)。
 
 ---
 
@@ -146,6 +147,24 @@ OneTrack 采集生命周期与异常事件，写入 `tracking.miui.com`。同一
 
 腾讯 TMSDK（`tmsdkobf`，478 类，`libTmsdk-2.0.16-mfr.so`）维护自有通道 `rcpc-sdk-access.m.qq.com`（另有 IPv4/IPv6 变体，端口 8002），并通过 `ExtraInfoFetcher` 计算 `imeiHash`。哈希不可逆，但它是与第三方共享的持久设备级标识。
 
+### 3.6 本地落盘数据
+
+| 数据 | 位置 | 形态 | 敏感度 |
+|---|---|---|---|
+| 病毒库、白名单、引擎元数据 | `databases/flamingo.db`（Room） | SQLite | 低 |
+| 经 Provider 暴露的白名单 | `t_virus_white_list` | SQLite | 低 |
+| AI 防护日计数 | `shared_prefs/ai_guard_daily_report.xml` | XML | 低 |
+| **原始通话音频** | `files/feedback01.tmp` | PCM 16 kHz 单声道，明文 | **高** |
+| **屏幕录像** | `files/clip01.tmp`、`cache/clip_*.tmp` | MP4 H.264，明文 | **高** |
+
+不使用外部存储；`allowBackup=false`；无 `sharedUserId`；无 `android:debuggable`。上述两个 AI 防护文件是全包仅有的高敏文件，留存逻辑见 F-12。
+
+### 3.7 普通应用可达性
+
+所有自定义导出组件——`GuardProvider`（`content://guard`）、`SecurityService`、`AiGuardService`、`PermissionRequestActivity`——均要求 `com.miui.guardprovider.permission.Guard_Provider`（`protectionLevel="0x12"`，`signature|privileged`）。Provider 实现了 `query/insert/delete/call`，但未实现 `openFile`，也未开启 `grantUriPermissions`，因此不存在文件描述符或 URI 授权路径。其余导出项为 AndroidX 组件，分别受 `DUMP`、`BIND_JOB_SERVICE` 保护。
+
+无权限应用既不能读取数据库，也不能触发扫描或启动 AI 防护。完整矩阵见 [`docs/LOCAL-DATA.md`](docs/LOCAL-DATA.md)。
+
 ---
 
 ## 4. 采集与上报时机
@@ -161,6 +180,8 @@ OneTrack 采集生命周期与异常事件，写入 `tracking.miui.com`。同一
 | 用户将告警标记为误报 | 完整原始 PCM + 文本，或 MP4 片段 | `/ai/audio/text/pcc/rbi`、`/aiVideo/pcc/rbi` |
 | 生命周期/异常 | OneTrack 批量 | `tracking.miui.com` |
 | 腾讯 SDK 内部调度 | RCPC 查询 | `rcpc-sdk-access.m.qq.com` |
+
+本包**没有任何自调度采集**：没有 `BOOT_COMPLETED` 接收器、没有 `PACKAGE_ADDED` 接收器、没有周期性 `WorkManager` 请求；唯一的 Worker 是 `ReportWorker`，每次扫描后入队一次。因此采集频率取决于安全中心，唯一由本包自驱动的路径是 AI 防护，且受通话与 10 分钟服务寿命约束。这正是它与 DM 客户端的结构性差异——后者开机即醒、每 12/24 小时自行上报，不论用户是否操作。
 
 联网受 `GuardApplication.isAllowConnectNetwork()` 控制：
 
@@ -356,6 +377,13 @@ TLS 之内，签名 POST 明文携带 `device`、`carrier`、`region`、`miuiVer
 **CWE-359、CWE-693**
 **修复** 改用系统逐次确认流程；显示平台录制指示；通知中写明当前正在录制什么。
 
+### F-12 — 原始通话音频与屏幕片段留存于磁盘 · **中**（隐私） · CVSS 4.1 `AV:L/AC:H/PR:H/UI:N/S:U/C:H/I:N/A:N`
+
+`aiguard/i.java` 把每个 PCM 缓冲写入 `files/feedback01.tmp`，并把已确认片段的副本写入 `files/clip01.tmp`，两者均为明文。删除是有条件的：服务销毁时仅在**未触发告警**的情况下调用 `f()` 删除（`AiGuardService.java:599`）；若已弹出警告而用户未操作，文件会保留到下一次采集将其截断。root 设备、取证镜像或任何同 UID 进程都可恢复最近一次通话的音频（含对方声音）与最近录制的屏幕内容。`.tmp` 后缀并不等于临时。
+
+**CWE-359、CWE-212** 存储前未移除敏感信息
+**修复** 上传或取消后立即删除两个文件；音频仅在内存保留；静态加密使用 Keystore 包裹密钥。
+
 ---
 
 ## 11. 隐私与合规观察
@@ -396,6 +424,24 @@ TLS 之内，签名 POST 明文携带 `device`、`carrier`、`region`、`miuiVer
 
 ---
 
+## 14. 披露路径
+
+本包作为 CVE/CNVD 候选明显弱于对照的 DM 客户端，因为其访问控制面是正确的。这里的发现属于密码学设计与隐私工程问题，不是可利用缺陷。
+
+| 发现 | 类别 | CVE | CNVD | 判断依据 |
+|---|---|---|---|---|
+| F-12 明文音频/片段留存 | CWE-359、CWE-212 | 否 | 可能，级别低 | 本地静态暴露；需要 root 或同 UID |
+| F-11 无系统录制指示 | CWE-359 | 否 | 否 | 能力由签名权限授予，会被以"设计如此"关闭 |
+| F-05 双端音频采集 | CWE-359 | 否 | 否 | 功能已披露，开通时取得同意 |
+| F-01 静态 AES 密钥 | CWE-321 | 否 | 边界 | 密钥确可还原，但没有可攻击的读取接口 |
+| F-02 硬编码签名盐 | CWE-798 | 否 | 边界 | 可伪造请求，但未证明用户侧影响 |
+| F-04 白名单无签名 | CWE-345 | 可能性低 | 边界 | 需要 TLS 中间人才能利用 |
+| F-03 无 pinning | CWE-295 | 否 | 否 | 加固缺口 |
+
+坦率地说：**把这些当作漏洞提交大概率会被驳回**，而一次驳回会削弱整份隐私分析的可信度。本包更合适的路径是**隐私投诉**（PIPL / 应用商店审核），引用 F-05、F-11、F-12；同时向厂商 PSIRT 发一份协调说明，指出明文留存问题。
+
+---
+
 ## 附录 A — 指标
 
 ```
@@ -432,6 +478,7 @@ docs/WIRE-FORMAT.md                     签名、信封、端点格式
 docs/DATA-FLOWS.md                      扫描 → 上报 → AI 防护数据流
 docs/COMPONENTS.md                      组件面与权限保护
 docs/METHOD.md                          工具与复现步骤
+docs/LOCAL-DATA.md                      本地数据、可达性与权限面
 ```
 
 ---

@@ -87,17 +87,18 @@ A full list is in `evidence/manifest-summary.txt`; the machine-readable profile 
 | F-03 | Medium | No certificate pinning; virus definitions and whitelists are downloaded and applied on the strength of the TLS PKI alone. |
 | F-04 | Medium | The whitelist is accepted without signature verification — a stub method `b(String,String)` returns `false` and is unused, suggesting a removed integrity check. |
 | F-05 | High | AI Guard records **both sides** of a call — `VOICE_COMMUNICATION` plus an `AudioPolicy` loopback — mixes them to 16 kHz mono, and sends the transcript to Xiaomi every 10 s; raw PCM is retained locally and uploaded if the user marks a false positive. |
-| F-11 | High | Screen capture is taken through a reflective `MediaProjection` under `MANAGE_MEDIA_PROJECTION`, bypassing the system consent dialog and capture indicator; 3-second MP4 clips are uploaded every 5 seconds. |
 | F-06 | Medium | Tencent TMSDK is bundled with its own network channel and hashed IMEI collection. |
 | F-07 | Low | Cleartext is permitted for an unused staging host and for `tools.3g.qq.com`. |
 | F-08 | Low | `requestLegacyExternalStorage` is stale at targetSdk 36 and sits alongside `MANAGE_EXTERNAL_STORAGE`. |
 | F-09 | Info | Exported components are correctly protected by a signature\|privileged permission — the opposite of the companion DM client. |
 | F-10 | Info | OneTrack analytics is initialised with two appIds (main package and AI module). |
+| F-11 | High | Screen capture is taken through a reflective `MediaProjection` under `MANAGE_MEDIA_PROJECTION`, bypassing the system consent dialog and capture indicator; 3-second MP4 clips are uploaded every 5 seconds. |
+| F-12 | Medium | Raw call audio (`files/feedback01.tmp`) and a screen clip (`files/clip01.tmp`) stay in plaintext on disk when an alert is raised and the user does not act. |
 
 Direct answers to the four questions:
 
 1. **What is collected** — installed-app metadata and hashes during scans; detected-threat records (package, certificate hashes, APK hashes, hit files, device uuid); AI Guard conversation text, 3-second screen clips, and raw call audio on feedback; OneTrack lifecycle and crash events; TMSDK device signals. → [§3](REPORT.md#3-what-is-collected)
-2. **How and when it is reported** — on scan events and scheduled engine updates; signed form POSTs and AES-enveloped JSON; OneTrack batches. → [§4](REPORT.md#4-when-it-collects-and-reports), [§5](REPORT.md#5-how-it-reports)
+2. **How and when it is reported** — on scan events and scheduled engine updates; signed form POSTs and AES-enveloped JSON; OneTrack batches. Nothing self-schedules: scans are caller-driven, AI Guard is call-driven. → [§4](REPORT.md#4-when-it-collects-and-reports), [§5](REPORT.md#5-how-it-reports)
 3. **Endpoints and authentication** — four Xiaomi hosts plus Tencent; static-salt MD5 signature, static AES key, confidential-computing envelope for AI data. No per-device authentication. → [§6](REPORT.md#6-endpoints), [§7](REPORT.md#7-authentication)
 4. **Can data be read back or intercepted** — no read API was found; unauthenticated requests are rejected with `error_code 10012`; traffic is HTTPS but unpinned, and the envelope key is in the APK, so a TLS-terminating adversary could read and alter scan telemetry and rule responses. → [§8](REPORT.md#8-can-data-be-obtained-from-the-endpoint), [§9](REPORT.md#9-can-traffic-be-intercepted)
 

@@ -15,7 +15,7 @@ This is the defensive counterpart to the carrier agent analysed in the companion
 
 Its component surface is, unlike the companion sample, correctly protected: every custom exported entry point requires a `signature|privileged` permission. The weaknesses are in the **cryptographic design of its own cloud protocols**, not in its access control.
 
-Six judgements drive the assessment:
+Seven judgements drive the assessment:
 
 1. **The payload envelope key is inside the APK.** `J1/i.java` derives a 16-byte AES key from `META-INF/flamingo.dat` (offset 144, XOR with a constant). Every installation of this build shares the same key; the derived key's SHA-256 is `229c6c76…`. Encryption here is obfuscation, not confidentiality against anyone who possesses the APK.
 2. **Request authentication is a hardcoded salt.** `sign = MD5(Base64(sorted(params) + "&" + "94e6cec2-19dc-4bb6-823c-613f72d3ea16"))`, with `mi` derived from `ANDROID_ID`. There is no per-device credential and no nonce. Possession of the APK plus any `ANDROID_ID` is sufficient to produce accepted requests.
@@ -23,6 +23,7 @@ Six judgements drive the assessment:
 4. **The whitelist has no signature check.** `p152x1/f.java` parses the downloaded JSON and replaces the whitelist table; a stub `b(String,String)` that always returns `false` is the remains of a removed integrity check.
 5. **AI Guard records both sides of a call and the screen, then uploads them.** `p098o1/h.java` opens two `AudioRecord` streams — `VOICE_COMMUNICATION` (near end) and an `AudioPolicy` loopback with `ROUTE_FLAG_RENDER|ROUTE_FLAG_LOOP_BACK` (far end) — and averages them into one 16 kHz mono stream. In the video path `p079l1/a.java` drives `MediaRecorder` (H.264, 720×1280, 24 fps) over a `MediaProjection` obtained by reflection under `MANAGE_MEDIA_PROJECTION`, records **3 seconds**, and `AiGuardService.C()` base64-encodes the MP4 into `/aiVideo/pcc/detection`; the loop then waits 2 seconds and repeats. The transcript goes to `/ai/audio/text/pcc/detection` every 10 seconds. The envelope is materially stronger than the rest of the app, but it protects a far broader data path than a text-only design would.
 6. **No unauthenticated read was found.** `api.sec.miui.com` answers `{"error_code":"10012","error":"Illegal request"}` without the signature parameters; `virus-engine` exposes `405 Allow: POST`. The endpoints enforce the scheme, but the scheme's secret is public.
+7. **Local data is not reachable by an ordinary app.** Every custom export is behind `signature|privileged`, there is no `sharedUserId`, no external-storage write and no `openFile`; the AI Guard artefacts are exceptional in sensitivity, not in reachability. The contrast with the companion DM client is stark — see [`docs/LOCAL-DATA.md`](docs/LOCAL-DATA.md).
 
 ---
 
@@ -144,6 +145,33 @@ OneTrack collects lifecycle and exception events and writes to `tracking.miui.co
 
 Tencent TMSDK (`tmsdkobf`, 478 classes, `libTmsdk-2.0.16-mfr.so`) maintains its own channel to `rcpc-sdk-access.m.qq.com` (plus IPv4/IPv6 variants on port 8002) and derives an `imeiHash` through its `ExtraInfoFetcher`. The hash is not reversible in practice, but it is a persistent device-level identifier shared with a third party.
 
+### 3.6 Local data at rest
+
+| Data | Store | Format | Sensitivity |
+|---|---|---|---|
+| virus definitions, whitelist, engine metadata | `databases/flamingo.db` (Room) | SQLite | low |
+| whitelist served through the provider | `t_virus_white_list` | SQLite | low |
+| AI Guard daily counters | `shared_prefs/ai_guard_daily_report.xml` | XML | low |
+| **raw call audio** | `files/feedback01.tmp` | PCM 16 kHz mono, plaintext | **high** |
+| **screen recording** | `files/clip01.tmp`, `cache/clip_*.tmp` | MP4 H.264, plaintext | **high** |
+
+No external storage is used, `allowBackup=false`, there is no `sharedUserId`, and
+`android:debuggable` is absent. The two AI Guard artefacts are the only high-sensitivity
+files; see F-12 for their retention behaviour.
+
+### 3.7 Reachability for an ordinary app
+
+Every custom exported component — `GuardProvider` (`content://guard`), `SecurityService`,
+`AiGuardService`, `PermissionRequestActivity` — requires
+`com.miui.guardprovider.permission.Guard_Provider` (`protectionLevel="0x12"`,
+`signature|privileged`). The provider implements `query/insert/delete/call` but not
+`openFile`, and does not set `grantUriPermissions`, so there is no descriptor or URI-grant
+path. The remaining exports are AndroidX components protected by `DUMP` or
+`BIND_JOB_SERVICE`.
+
+An app with no permissions cannot read the databases, invoke a scan, or start AI Guard. The
+full matrix is in [`docs/LOCAL-DATA.md`](docs/LOCAL-DATA.md).
+
 ---
 
 ## 4. When it collects and reports
@@ -159,6 +187,13 @@ Tencent TMSDK (`tmsdkobf`, 478 classes, `libTmsdk-2.0.16-mfr.so`) maintains its 
 | User marks a detection as a false positive | full raw PCM + transcript, or the MP4 clip | `/ai/audio/text/pcc/rbi`, `/aiVideo/pcc/rbi` |
 | App lifecycle / exception | OneTrack batch | `tracking.miui.com` |
 | Tencent SDK internal schedule | RCPC queries | `rcpc-sdk-access.m.qq.com` |
+
+Nothing in this package self-schedules. It declares no `BOOT_COMPLETED` receiver, no
+`PACKAGE_ADDED` receiver and no periodic `WorkManager` request; the only worker is
+`ReportWorker`, enqueued once per scan. Collection frequency is therefore whatever the
+security centre asks for, and the one self-driven path — AI Guard — is bounded by a call and
+by a 10-minute service lifetime (default). This is the structural difference from the DM
+client, which wakes itself on boot and every 12/24 hours whether the user acts or not.
 
 Network access is gated by `GuardApplication.isAllowConnectNetwork()`:
 
@@ -354,6 +389,20 @@ The foreground notification reads “通话防护中 / Call protection is on” 
 **CWE-359, CWE-693**
 **Fix** use the system consent flow per session, surface the platform capture indicator, and make the notification state what is being recorded.
 
+### F-12 — Raw call audio and screen clips survive on disk · **Medium** (privacy) · CVSS 4.1 `AV:L/AC:H/PR:H/UI:N/S:U/C:H/I:N/A:N`
+
+`aiguard/i.java` writes every PCM buffer to `files/feedback01.tmp` and copies a confirmed
+screen clip to `files/clip01.tmp`, both plaintext. Deletion is conditional: the service
+removes them at teardown only when no alert was raised (`AiGuardService.java:599`); if a
+warning was displayed and the user does not act, they remain until the next capture truncates
+them. A rooted device, a forensic image, or any process that shares the UID can recover the
+last call's audio — including the remote party — and the last recorded screen content. The
+`.tmp` extension does not make the file ephemeral.
+
+**CWE-359, CWE-212** Improper Removal of Sensitive Information Before Storage
+**Fix** delete both files immediately after upload or dismissal, keep audio memory-only, and
+encrypt at rest with a Keystore-wrapped key.
+
 ---
 
 ## 11. Privacy and compliance observations
@@ -394,6 +443,29 @@ The pair shows two different failure modes in the same OEM image: the carrier ag
 
 ---
 
+## 14. Disclosure path
+
+This package is a much weaker CVE/CNVD candidate than the companion DM client, because its
+access-control surface is correct. The findings are cryptographic design and privacy
+engineering, not exploitable defects.
+
+| Finding | Class | CVE | CNVD | Reasoning |
+|---|---|---|---|---|
+| F-12 plaintext call audio / clips | CWE-359, CWE-212 | no | possible, low | local-at-rest exposure; requires root or UID sharing |
+| F-11 capture without platform indicator | CWE-359 | no | no | the capability is granted by a signature permission; closed as "by design" |
+| F-05 full-duplex audio capture | CWE-359 | no | no | disclosed feature, consent collected at enrolment |
+| F-01 static AES key | CWE-321 | no | borderline | key recovery is real, but there is no read endpoint to attack |
+| F-02 hardcoded signing salt | CWE-798 | no | borderline | lets anyone mint requests; no user-side impact demonstrated |
+| F-04 whitelist without signature | CWE-345 | unlikely | borderline | needs TLS interception to exploit |
+| F-03 no pinning | CWE-295 | no | no | hardening gap |
+
+The honest framing: **submitting these as vulnerabilities would likely fail**, and a failed
+submission weakens the credibility of the privacy analysis. The better route for this package
+is a **privacy complaint** (PIPL / app-store review) citing F-05, F-11 and F-12, plus a
+coordinated note to the vendor PSIRT about the plaintext retention.
+
+---
+
 ## Appendix A — Indicators
 
 ```
@@ -431,6 +503,7 @@ docs/DATA-FLOWS.md                      scan → report → AI guard paths
 docs/COMPONENTS.md                      component surface and protection levels
 docs/AI-GUARD.md                       AI Guard capture chain, cadence and disclosure analysis
 docs/METHOD.md                          tooling and reproduction
+docs/LOCAL-DATA.md                      at-rest data, reachability, privilege surface
 ```
 
 ---
