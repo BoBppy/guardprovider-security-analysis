@@ -308,7 +308,7 @@ No `CertificatePinner`; virus definitions and whitelists are accepted over the p
 
 ### F-06 — Third-party engine with its own network channel · **Medium**
 
-Tencent TMSDK (478 classes, native library, `assets/mdetector`) talks to `rcpc-sdk-access.m.qq.com` and derives `imeiHash`. Its traffic is outside the Xiaomi signing scheme and outside `GuardApplication.isAllowConnectNetwork()`.
+Tencent TMSDK (478 classes, native library, `assets/mdetector`) talks to `rcpc-sdk-access.m.qq.com` and derives `imeiHash`. Its traffic is outside the Xiaomi signing scheme and is not routed through the intercepted OkHttp client that enforces the region switch.
 **CWE-1104** Use of Unmaintained Third Party Components
 **Fix** document the third-party flow in the privacy notice, confirm a data-processing agreement, and confirm that the SDK honours the region kill switch.
 

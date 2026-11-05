@@ -310,7 +310,7 @@ TLS 之内，签名 POST 明文携带 `device`、`carrier`、`region`、`miuiVer
 
 ### F-06 — 三方引擎自有网络通道 · **中**
 
-腾讯 TMSDK（478 类、原生库、`assets/mdetector`）连接 `rcpc-sdk-access.m.qq.com` 并派生 `imeiHash`。其流量不走小米签名体系，也不受 `GuardApplication.isAllowConnectNetwork()` 约束。
+腾讯 TMSDK（478 类、原生库、`assets/mdetector`）连接 `rcpc-sdk-access.m.qq.com` 并派生 `imeiHash`。其流量不走小米签名体系，也不经过执行区域开关的 OkHttp 拦截器。
 **CWE-1104** 过时三方组件
 **修复** 在隐私告知中披露该数据流、确认数据处理协议、确认 SDK 遵守区域开关。
 
