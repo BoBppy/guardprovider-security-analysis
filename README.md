@@ -1,6 +1,6 @@
 # System Security Components 2.5.6 — Security and Privacy Assessment of a HyperOS System Package
 
-A reverse-engineering study of `com.miui.guardprovider` ("系统安全组件"), the anti-malware and fraud-detection component that ships inside HyperOS. The package runs with platform privileges, scans installed applications with three engines (Xiaomi, Tencent, Antiy), downloads threat intelligence from Xiaomi endpoints, and — in its AI Guard mode — captures call audio to detect scams.
+A reverse-engineering study of `com.miui.guardprovider` ("系统安全组件"), the anti-malware and fraud-detection component that ships inside HyperOS. The package runs with platform privileges, scans installed applications with three engines (Xiaomi, Tencent, Antiy), downloads threat intelligence from Xiaomi endpoints, and — in its AI Guard mode — records both sides of a call and 3-second screen clips during video calls, then uploads them for fraud analysis.
 
 This repository contains the full report, decompiled evidence, reconstructed request formats, endpoint observations and the tooling needed to reproduce every claim.
 
@@ -86,7 +86,8 @@ A full list is in `evidence/manifest-summary.txt`; the machine-readable profile 
 | F-02 | High | Request signing uses a hardcoded salt (`94e6cec2-…`) and MD5 over sorted parameters, with no nonce and no per-device credential. Anyone with the APK can mint a valid request. |
 | F-03 | Medium | No certificate pinning; virus definitions and whitelists are downloaded and applied on the strength of the TLS PKI alone. |
 | F-04 | Medium | The whitelist is accepted without signature verification — a stub method `b(String,String)` returns `false` and is unused, suggesting a removed integrity check. |
-| F-05 | Medium | AI Guard captures voice-call audio (VOICE_CALL), runs ASR, and sends the recognised text to Xiaomi fraud-detection engines. |
+| F-05 | High | AI Guard records **both sides** of a call — `VOICE_COMMUNICATION` plus an `AudioPolicy` loopback — mixes them to 16 kHz mono, and sends the transcript to Xiaomi every 10 s; raw PCM is retained locally and uploaded if the user marks a false positive. |
+| F-11 | High | Screen capture is taken through a reflective `MediaProjection` under `MANAGE_MEDIA_PROJECTION`, bypassing the system consent dialog and capture indicator; 3-second MP4 clips are uploaded every 5 seconds. |
 | F-06 | Medium | Tencent TMSDK is bundled with its own network channel and hashed IMEI collection. |
 | F-07 | Low | Cleartext is permitted for an unused staging host and for `tools.3g.qq.com`. |
 | F-08 | Low | `requestLegacyExternalStorage` is stale at targetSdk 36 and sits alongside `MANAGE_EXTERNAL_STORAGE`. |
@@ -95,7 +96,7 @@ A full list is in `evidence/manifest-summary.txt`; the machine-readable profile 
 
 Direct answers to the four questions:
 
-1. **What is collected** — installed-app metadata and hashes during scans; detected-threat records (package, certificate hashes, APK hashes, hit files, device uuid); AI Guard conversation text; OneTrack lifecycle and crash events; TMSDK device signals. → [§3](REPORT.md#3-what-is-collected)
+1. **What is collected** — installed-app metadata and hashes during scans; detected-threat records (package, certificate hashes, APK hashes, hit files, device uuid); AI Guard conversation text, 3-second screen clips, and raw call audio on feedback; OneTrack lifecycle and crash events; TMSDK device signals. → [§3](REPORT.md#3-what-is-collected)
 2. **How and when it is reported** — on scan events and scheduled engine updates; signed form POSTs and AES-enveloped JSON; OneTrack batches. → [§4](REPORT.md#4-when-it-collects-and-reports), [§5](REPORT.md#5-how-it-reports)
 3. **Endpoints and authentication** — four Xiaomi hosts plus Tencent; static-salt MD5 signature, static AES key, confidential-computing envelope for AI data. No per-device authentication. → [§6](REPORT.md#6-endpoints), [§7](REPORT.md#7-authentication)
 4. **Can data be read back or intercepted** — no read API was found; unauthenticated requests are rejected with `error_code 10012`; traffic is HTTPS but unpinned, and the envelope key is in the APK, so a TLS-terminating adversary could read and alter scan telemetry and rule responses. → [§8](REPORT.md#8-can-data-be-obtained-from-the-endpoint), [§9](REPORT.md#9-can-traffic-be-intercepted)
@@ -121,7 +122,7 @@ evidence/
   data-fields.csv          field-level collection map
   hashes.txt               hashes, signer, static key fingerprint
   strings/                 DEX string table and URI list
-  decompiled/              26 classes referenced by the report
+  decompiled/              36 classes referenced by the report
   network/                 endpoint probe transcript
 tools/
   sign_request.py          offline reproduction of the MD5 signature

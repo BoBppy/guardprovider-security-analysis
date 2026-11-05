@@ -23,7 +23,7 @@
 2. **请求认证是一个硬编码盐。** `sign = MD5(Base64(排序后的参数 + "&" + "94e6cec2-19dc-4bb6-823c-613f72d3ea16"))`，`mi` 由 `ANDROID_ID` 派生。没有每设备凭据，也没有 nonce。持有 APK 加任意 `ANDROID_ID` 即可构造被接受的请求。
 3. **没有证书固定（pinning）。** 病毒库、白名单、扫描结论全部走标准 TLS 与系统信任库。对一个靠远程规则运行的安全产品，这条防线过于单薄。
 4. **白名单没有签名校验。** `p152x1/f.java` 解析下载的 JSON 后直接清表重写；恒返回 `false` 的 `b(String,String)` 是被移除的完整性校验的残留。
-5. **AI 防护是最敏感的数据路径。** 它注册 `AudioRecordingCallback` 监听 `VOICE_CALL`，把通话音频转写为文本后发往 `detection-aigc` / `fraud-detection`，使用机密计算信封。该信封设计明显强于应用其他部分（会话公钥、key id、digest），但这仍是整个包内风险最高的能力。
+5. **AI 防护同时采集通话双方的声音与屏幕，并把它们上传。** `p098o1/h.java:49` 同时打开两路 `AudioRecord`——`VOICE_COMMUNICATION`（近端）与经隐藏 `AudioPolicy` 接口建立的回环（远端，`ROUTE_FLAG_RENDER|ROUTE_FLAG_LOOP_BACK`，`p098o1/f.java:27`），逐采样点取平均后合成 16 kHz 单声道，因此**对方的声音同样被采集**。视频路径由 `p079l1/a.java` 驱动 `MediaRecorder`（H.264、720×1280、24 fps），其 `MediaProjection` 通过反射在 `MANAGE_MEDIA_PROJECTION` 下取得，**录 3 秒**后由 `AiGuardService.C()` 将 MP4 以 base64 发往 `/aiVideo/pcc/detection`，再等 2 秒进入下一轮。转写文本每 10 秒发往 `/ai/audio/text/pcc/detection`。
 6. **未发现未认证读取。** `api.sec.miui.com` 在缺少签名参数时返回 `{"error_code":"10012","error":"Illegal request"}`；`virus-engine` 返回 `405 Allow: POST`。端点确实执行校验，但校验所依赖的秘密是公开的。
 
 ---
@@ -114,15 +114,22 @@ com.miui.securitycenter.permission.READ_APP_BEHAVIORS
 
 ### 3.3 AI 防护
 
-`AiGuardService` 注册 `AudioManager.registerAudioRecordingCallback`，监听 `SOURCE_VOICE_CALL`（值 4）。安全中心开启后（`ai_guard_function_switch` intent extra，默认 `false`）：
+`AiGuardService` 运行在 `:ai` 进程，清单声明 `foregroundServiceType="0xA0"`——麦克风（0x80）+ 媒体投影（0x20）。它由安全中心启动（`COMMAND 1` 语音、`COMMAND 2` 视频、`COMMAND 3` 开关），并在 `detectionServiceLifetimeThresholdInMinutes`（默认 10 分钟）后自行停止。
 
-1. 对通话音频启动 ASR（`p098o1.b`）；
-2. 组织对话文本；
-3. 封装为 `EncryptedData`，POST 至 `/ai/audio/text/pcc/detection`；
-4. 可选上报用户反馈至 `/ai/audio/text/pcc/rbi`、`/aiVideo/pcc/rbi`；
-5. 维护分场景计数（微信/QQ/电话，语音/视频）。
+**语音路径。** `p098o1/h.java:49` 同时打开两个录音器：`AudioRecord` 源 7（`VOICE_COMMUNICATION`，近端），以及通过隐藏 `AudioPolicy` 接口构建的远端回环（`p098o1/f.java:27`，路由标志 `RENDER|LOOP_BACK`），两者逐采样点取平均，合成 16 kHz 单声道。该流被送往绑定的识别服务（`p098o1/b.java`），累积成句后每 `voiceDetectionGapInSeconds`（默认 10 秒）冲刷一次文本。`AudioRecordingCallback` 只是**冲突保护**——若已有其他应用占用 `VOICE_CALL`，`AiGuardService.n` 会放弃采集，它并不是采集入口。
 
-对话文本是本包处理的最敏感数据。其信封是全应用最强的：`secure_channel_session_public_key`、`key_id`、`digest`、`data_bytes`——会话公钥 + 密钥管理标识，而非静态密钥。
+**视频路径。** `p079l1/a.java` 用 `MediaRecorder` 录整屏（H.264、720×1280、24 fps、1 Mbit/s），输出 3 秒一段的文件；`AiGuardService.C` 将每段 base64 编码后上报。`p079l1/d.java:45` 通过反射在 `MANAGE_MEDIA_PROJECTION` 下取得 `MediaProjection`，绕过系统录屏确认弹窗与平台录制指示。
+
+离开设备的数据：
+
+| 数据 | 形态 | 去向 | 时机 |
+|---|---|---|---|
+| 对话文本 | `{requestId,text}`，信封封装 | `/ai/audio/text/pcc/detection` | 通话中每 10 秒 |
+| 屏幕片段 | `{streamName:"clip.mp4",fileBase64,requestId}` | `/aiVideo/pcc/detection` | 视频通话中约每 5 秒 |
+| 原始通话音频 + 文本 | `{requestId,audioPCM,audioText}` | `/ai/audio/text/pcc/rbi` | 仅用户点“标记为误报”时 |
+| 屏幕片段副本 | `{fileType:"MP4",fileBase64,requestId}` | `/aiVideo/pcc/rbi` | 仅用户点“标记为误报”时 |
+
+本地 `files/feedback01.tmp` 保存全部 PCM，`files/clip01.tmp` 保存已命中片段的副本；除已触发告警外，服务销毁时两者都会被删除（`AiGuardService.java:599`）。另维护分场景计数（微信/QQ/电话，语音/视频）。完整链路见 [`docs/AI-GUARD.md`](docs/AI-GUARD.md)；信封字段为 `secure_channel_session_public_key`、`key_id`、`digest`、`data_bytes`。
 
 ### 3.4 遥测
 
@@ -149,7 +156,9 @@ OneTrack 采集生命周期与异常事件，写入 `tracking.miui.com`。同一
 | 扫描开始（`startScan`、`startScanAsScene`、`install_scan`、`sync_scan`） | 本地引擎运行；未知包走云端 | `virus-engine.sec.miui.com/virus/scan` |
 | 命中威胁 | 每条命中上报一份 `ResultReportData` | `virus-engine.sec.miui.com/virus/localResult/report` |
 | 诈骗应用 | 上报包元数据 | `fraud-detection.engine.miui.com/hyperos/fraud/app/report` |
-| AI 防护开启且通话中 | ASR，逐句检测 | `detection-aigc.engine.miui.com` |
+| AI 防护开启且通话中 | 双端音频采集（麦克风 + 远端回环），每 10 秒冲刷转写 | `detection-aigc.engine.miui.com/ai/audio/text/pcc/detection` |
+| AI 防护开启且视频通话中 | 录屏 3 秒、上报、空闲 2 秒，循环至多 10 分钟 | `detection-aigc.engine.miui.com/aiVideo/pcc/detection` |
+| 用户将告警标记为误报 | 完整原始 PCM + 文本，或 MP4 片段 | `/ai/audio/text/pcc/rbi`、`/aiVideo/pcc/rbi` |
 | 生命周期/异常 | OneTrack 批量 | `tracking.miui.com` |
 | 腾讯 SDK 内部调度 | RCPC 查询 | `rcpc-sdk-access.m.qq.com` |
 
@@ -195,6 +204,8 @@ header = EncryptVersion
 ### 5.3 机密计算信封（AI 防护）
 
 `EncryptedData` 携带版本、会话公钥、`key_id`、digest 与密文。实际封装委托给 `N1.a`（机密计算 binder 服务），密钥不在 APK 内。这是全包唯一"持有 APK 也攻不破"的方案。
+
+载荷形态：音频检测 `{requestId,text}`；视频检测 `{streamName:"clip.mp4",fileBase64,requestId}`；反馈 `{requestId,audioPCM,audioText}` 与 `{fileType:"MP4",fileBase64,requestId}`。base64 在封装之前施加，因此 1 Mbit/s 的 3 秒片段约 375 KB，进入 JSON 后约 500 KB。
 
 ### 5.4 响应处理
 
@@ -302,11 +313,13 @@ TLS 之内，签名 POST 明文携带 `device`、`carrier`、`region`、`miuiVer
 **CWE-345** 数据真实性校验不足
 **修复** 白名单由离线密钥签名，入库前验签；失败即拒绝更新。
 
-### F-05 — AI 防护采集通话音频并转写 · **中**（隐私）
+### F-05 — 通话双端音频采集与上传 · **高**（隐私） · CVSS 7.1 `AV:N/AC:L/PR:H/UI:N/S:C/C:H/I:N/A:N`
 
-`AudioRecordingCallback` 监听 `SOURCE_VOICE_CALL`，ASR 后把文本发往小米引擎。同意由安全中心代收（`ai_guard_function_switch`，政策 `privacy.mi.com/AIalert`），传输使用会话级机密计算信封。设计是有意的，但这是全包最敏感的能力，需要最强的告知与审计。
-**CWE-359**
-**修复** 系统层默认关闭；采集期间常驻指示；转写仅驻留内存；提供按请求审计。
+`p098o1/h.java:49` 同时打开两个录音器：`AudioRecord` 源 `VOICE_COMMUNICATION`（近端），以及通过隐藏 `AudioPolicy` 接口、以 `ROUTE_FLAG_RENDER|ROUTE_FLAG_LOOP_BACK` 构建的回环录音器（`p098o1/f.java:27`）。两路逐采样点取平均合成 16 kHz 单声道，因此**对方的声音与机主的声音一并被采集**。混合流被推送至绑定的识别服务（`p098o1/b.java` 的 `postData`），每 10 秒以文本形式上发 `/ai/audio/text/pcc/detection`；每个 PCM 缓冲同时追加写入 `files/feedback01.tmp`，仅当用户事后点“标记为误报”时才整段上传（`AlertActivity.java:170`）。
+
+该链路依赖 `CAPTURE_AUDIO_OUTPUT`、`CAPTURE_VOICE_COMMUNICATION_OUTPUT`、`MODIFY_AUDIO_ROUTING`，三者均为 `signature|privileged`。普通应用即便持有 `RECORD_AUDIO` 也无法构建。
+**CWE-359、CWE-693**
+**修复** 每次通话单独征得同意；采集期间显示指示；无条件删除 `feedback01.tmp`；明确说明哪一方音频被送往哪个服务。
 
 ### F-06 — 三方引擎自有网络通道 · **中**
 
@@ -334,14 +347,23 @@ TLS 之内，签名 POST 明文携带 `device`、`carrier`、`region`、`miuiVer
 
 主体 `31000401489`，AI 模块 `2882303761517522561`。事件分散到两个分析身份，隐私告知与数据地图应体现这一点。
 
+### F-11 — 录屏绕过系统录制指示 · **高**（隐私） · CVSS 7.1 `AV:N/AC:L/PR:H/UI:N/S:C/C:H/I:N/A:N`
+
+`p079l1/d.java:45` 并非调用 `createScreenCaptureIntent()`，而是反射进入 `IMediaProjectionManager.createProjection()` 取得 `MediaProjection`。该路径受 `MANAGE_MEDIA_PROJECTION`（`signature`）保护，因此系统的录屏确认弹窗与“正在录屏”指示均不会出现。随后 `p079l1/a.java` 用 `MediaRecorder` 录整屏（H.264、720×1280、24 fps、1 Mbit/s），每段 3 秒；`AiGuardService$p` 将每段上报至 `/aiVideo/pcc/detection`，每 5 秒循环一次，最多持续 10 分钟（`AiGuardService.java:1466`）。
+
+前台通知标题仅为“通话防护中”，正文为“识别到疑似欺诈或换脸伪造身份时发送预警”，未提及正在录屏。一次性隐私声明确实写明了收集“视频帧或视频片段”，即采集在开通时已告知——但用户在任一次通话中都无法得知屏幕此刻正被录制。
+
+**CWE-359、CWE-693**
+**修复** 改用系统逐次确认流程；显示平台录制指示；通知中写明当前正在录制什么。
+
 ---
 
 ## 11. 隐私与合规观察
 
 1. **目的限制。** 扫描已安装包、仅上报命中项，是克制的；不存在全量清单上报。
-2. **透明性。** 包本身不可见；AI 防护的同意由安全中心收集。政策链接存在（`privacy.mi.com/AIalert`），但只能经安全中心流程到达。
+2. **透明性。** 包本身不可见。AI 防护在开通时一次性告知（`ai_guard_privacy_policy_message` 及录屏确认弹窗），并常驻“通话防护中”通知——但无论通知还是系统指示，都不会告诉用户某次通话中采集正在进行；通话对方则始终不知情。
 3. **三方披露。** 风险决策在小米侧，但扫描引擎与一条网络通道属于腾讯；SDK 的 `imeiHash` 是三方标识。
-4. **最小化。** 云端查询按哈希（好）；威胁上报含 `uuid`、`device`、`hitFiles` 与完整 APK 哈希（分诊所需，但服务端留存超出审计必要）。
+4. **最小化。** 云端查询按哈希（好）；威胁上报含 `uuid`、`device`、`hitFiles` 与完整 APK 哈希（分诊所需，但服务端留存超出审计必要）。AI 防护是明显例外：每 5 秒上传完整的 3 秒屏幕片段，用户反馈时上传整段原始通话音频——是本包中最小化程度最低的数据。
 5. **留存。** 本地数据库与日志未穷尽梳理；服务端留存未知。
 6. **区域开关。** `isAllowConnectNetwork()` 是真实控制，但服务于区域合规，而非用户选择。
 
@@ -357,7 +379,7 @@ TLS 之内，签名 POST 明文携带 `device`、`carrier`、`region`、`miuiVer
 | 报文保护 | MD5→AES-ECB、RSA-1024 公钥 | APK 内静态 AES-CBC 密钥；AI 用机密计算 |
 | 客户端认证 | 无（公钥"签名"） | 硬编码盐 + MD5，无 nonce |
 | 同意 | 仅 `device_provisioned` | 交由安全中心；功能开关默认关闭 |
-| 上报数据 | IMEI、IMSI、ICCID、位置、应用清单 | 扫描元数据、命中威胁、AI 转写 |
+| 上报数据 | IMEI、IMSI、ICCID、位置、应用清单 | 扫描元数据、命中威胁、通话转写、3 秒屏幕片段、反馈时的原始 PCM |
 | 端点读回 | WAF URL ACL 拦截 | 应用层 10012 |
 
 两份样本展示了同一 OEM 镜像中的两种失效模式：运营商代理败在**访问控制与传输**，安全组件败在**密码学设计**。二者的共同点是——秘密都随 APK 一起分发。
@@ -402,7 +424,7 @@ evidence/data-fields.csv                逐字段采集映射
 evidence/hashes.txt                     哈希、签名者、静态密钥指纹
 evidence/strings/dex-strings.txt        55,409 条可打印字符串
 evidence/strings/urls.txt               20 条 URI
-evidence/decompiled/                    报告引用的 26 个类
+evidence/decompiled/                    报告引用的 36 个类
 evidence/network/probe-log.txt          端点探测记录
 tools/sign_request.py                   离线复现 MD5 签名
 tools/extract_crypto.py                 静态 AES 密钥导出（仅指纹）

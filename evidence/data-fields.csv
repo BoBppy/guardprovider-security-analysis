@@ -1,4 +1,4 @@
-﻿dataset,field,source,transform,notes
+dataset,field,source,transform,notes
 request-common,device,ro.product.device (system property),none,sent on every signed API call
 request-common,carrier,ro.carrier.name,none,
 request-common,region,ro.product.mod_device,none,
@@ -24,18 +24,21 @@ threat-report,androidVersion,Build.VERSION.SDK_INT,none,
 threat-report,device,Build.MODEL,none,
 threat-report,uuid,generated/persisted per install,none,links reports across time
 threat-report,hitFiles,scanner output,none,matched file paths
-cloud-scan,packageName,PackageManager,none,/virus/scan; hashes only, APK is not uploaded
+cloud-scan,packageName,PackageManager,none,"/virus/scan; hashes only, APK is not uploaded"
 cloud-scan,versionCode,PackageInfo,none,
 cloud-scan,apkCertificateMD5,PackageInfo.signatures,none,
 cloud-scan,apkCertificateSHA256,PackageInfo.signatures,none,
 cloud-scan,mfFileSHA256,APK parse,none,
-ai-guard,conversation text,ASR of call/IM audio (VOICE_CALL capture),encrypted with confidential-computing envelope,/ai/audio/text/pcc/detection
-ai-guard,audio risk feedback,user feedback,none,/ai/audio/text/pcc/rbi
-ai-guard,video risk feedback,user feedback,none,/aiVideo/pcc/rbi
-ai-guard,scene counters,WeChat/QQ/phone voice+video detection counts,none,telemetry of usage of the feature
+ai-guard,call audio (near end),AudioRecord VOICE_COMMUNICATION (source 7),mixed 50/50 with the far end into 16 kHz mono PCM16,continuous during a call; also written to files/feedback01.tmp
+ai-guard,call audio (far end),AudioPolicy loopback with ROUTE_FLAG_RENDER|ROUTE_FLAG_LOOP_BACK,none,requires CAPTURE_AUDIO_OUTPUT (signature|privileged)
+ai-guard,conversation text,ASR of the mixed stream,sealed with confidential-computing envelope,/ai/audio/text/pcc/detection every voiceDetectionGapInSeconds (default 10)
+ai-guard,screen clip,MediaProjection + MediaRecorder H.264 720x1280@24fps,base64 of the MP4,/aiVideo/pcc/detection every ~5 s (3 s record + 2 s idle)
+ai-guard,audio risk feedback,user taps 'mark as false positive',base64 raw PCM + full transcript,/ai/audio/text/pcc/rbi
+ai-guard,video risk feedback,user taps 'mark as false positive',base64 MP4,/aiVideo/pcc/rbi
+ai-guard,scene counters,WeChat/QQ/phone voice+video detection counts,none,telemetry of feature usage
 ai-guard,secure_channel_session_public_key,generated per session,none,EncryptedData envelope
 ai-guard,key_id,key management service,none,
-ai-guard,digest,payload digest,none,integrity hint, not a signature
+ai-guard,digest,payload digest,none,"integrity hint, not a signature"
 analytics,app lifecycle events,OneTrack autoTrackActivityAction,none,two appIds 31000401489 and 2882303761517522561
 analytics,appId/channel,OneTrack Configuration,none,channel = package name
 analytics,exception traces,OneTrack exceptionCatcherEnable,none,crash telemetry

@@ -21,7 +21,7 @@ Six judgements drive the assessment:
 2. **Request authentication is a hardcoded salt.** `sign = MD5(Base64(sorted(params) + "&" + "94e6cec2-19dc-4bb6-823c-613f72d3ea16"))`, with `mi` derived from `ANDROID_ID`. There is no per-device credential and no nonce. Possession of the APK plus any `ANDROID_ID` is sufficient to produce accepted requests.
 3. **No certificate pinning.** Virus definitions, whitelists and scan verdicts travel over ordinary TLS with the platform trust store. For a security product that consumes remote rules, this is a thin margin.
 4. **The whitelist has no signature check.** `p152x1/f.java` parses the downloaded JSON and replaces the whitelist table; a stub `b(String,String)` that always returns `false` is the remains of a removed integrity check.
-5. **AI Guard is the most sensitive data path.** It registers an `AudioRecordingCallback` for `VOICE_CALL`, transcribes call audio through ASR and posts the text to `detection-aigc` / `fraud-detection` using a confidential-computing envelope. The envelope design is materially stronger than the rest of the app (per-session public key, key id, digest), but the capability itself is the highest-risk function in the package.
+5. **AI Guard records both sides of a call and the screen, then uploads them.** `p098o1/h.java` opens two `AudioRecord` streams — `VOICE_COMMUNICATION` (near end) and an `AudioPolicy` loopback with `ROUTE_FLAG_RENDER|ROUTE_FLAG_LOOP_BACK` (far end) — and averages them into one 16 kHz mono stream. In the video path `p079l1/a.java` drives `MediaRecorder` (H.264, 720×1280, 24 fps) over a `MediaProjection` obtained by reflection under `MANAGE_MEDIA_PROJECTION`, records **3 seconds**, and `AiGuardService.C()` base64-encodes the MP4 into `/aiVideo/pcc/detection`; the loop then waits 2 seconds and repeats. The transcript goes to `/ai/audio/text/pcc/detection` every 10 seconds. The envelope is materially stronger than the rest of the app, but it protects a far broader data path than a text-only design would.
 6. **No unauthenticated read was found.** `api.sec.miui.com` answers `{"error_code":"10012","error":"Illegal request"}` without the signature parameters; `virus-engine` exposes `405 Allow: POST`. The endpoints enforce the scheme, but the scheme's secret is public.
 
 ---
@@ -37,7 +37,7 @@ Six judgements drive the assessment:
 | Native code | 12 ARM64 libraries, not reversed |
 | Dynamic testing | none (no device/emulator) |
 | Network testing | DNS, `HEAD /` on four hosts, `GET` on three documented paths without parameters; **no POST, no credential, no path enumeration** |
-| Evidence | `evidence/` — manifest, 26 decompiled classes, string table, hashes, probe log |
+| Evidence | `evidence/` — manifest, 36 decompiled classes, string table, hashes, probe log |
 
 ---
 
@@ -112,15 +112,22 @@ When an engine flags an application, `ResultReportData` is uploaded with:
 
 ### 3.3 AI Guard
 
-`AiGuardService` registers `AudioManager.registerAudioRecordingCallback` and watches for `SOURCE_VOICE_CALL` (value 4). When the security centre enables the feature (`ai_guard_function_switch` intent extra, default `false`), it:
+`AiGuardService` runs in `:ai` and is declared with `foregroundServiceType="0xA0"` — microphone (0x80) plus media projection (0x20). It is started by the security centre (`COMMAND 1` voice, `COMMAND 2` video, `COMMAND 3` toggle) and stops itself after `detectionServiceLifetimeThresholdInMinutes` (default 10).
 
-1. starts ASR on call audio (`p098o1.b`),
-2. assembles a conversation transcript,
-3. packages it as `EncryptedData` and posts to `/ai/audio/text/pcc/detection`,
-4. optionally sends user feedback to `/ai/audio/text/pcc/rbi` and `/aiVideo/pcc/rbi`,
-5. keeps per-scene counters (WeChat/QQ/phone, voice/video).
+**Voice path.** `p098o1/h.java:49` opens two recorders at once — `AudioRecord` source 7 (`VOICE_COMMUNICATION`, near end) and a far-end loopback built through the hidden `AudioPolicy` API (`p098o1/f.java:27`, route flags `RENDER|LOOP_BACK`) — and averages them sample by sample into one 16 kHz mono stream. The stream is posted to the bound Xiaomi recogniser (`p098o1/b.java`), accumulated into sentences, and flushed as text every `voiceDetectionGapInSeconds` (default 10 s). The `AudioRecordingCallback` is a collision guard, not the capture mechanism: `AiGuardService.n` aborts if another app already holds `VOICE_CALL`.
 
-The transcript is the most sensitive data the package handles. The envelope is the strongest in the app: `secure_channel_session_public_key`, `key_id`, `digest`, `data_bytes` — a per-session public key with a key-management identifier, not a static key.
+**Video path.** `p079l1/a.java` records the display with `MediaRecorder` (H.264, 720×1280, 24 fps, 1 Mbit/s) into 3-second files; `AiGuardService.C` base64-encodes each file and posts it. `p079l1/d.java:45` obtains the `MediaProjection` by reflection under `MANAGE_MEDIA_PROJECTION`, which bypasses the system consent dialog and the platform capture indicator.
+
+Data leaving the device:
+
+| Data | Form | Destination | When |
+|---|---|---|---|
+| conversation transcript | `{requestId,text}`, sealed | `/ai/audio/text/pcc/detection` | every 10 s while a call is active |
+| screen clip | `{streamName:"clip.mp4",fileBase64,requestId}` | `/aiVideo/pcc/detection` | every ~5 s while a video call is active |
+| raw call audio + transcript | `{requestId,audioPCM,audioText}` | `/ai/audio/text/pcc/rbi` | only when the user marks a false positive |
+| screen clip (copy) | `{fileType:"MP4",fileBase64,requestId}` | `/aiVideo/pcc/rbi` | only when the user marks a false positive |
+
+Locally, `files/feedback01.tmp` holds every PCM buffer and `files/clip01.tmp` holds a copy of a confirmed clip; both are deleted at service teardown unless a warning was raised (`AiGuardService.java:599`). Per-scene counters (WeChat/QQ/phone, voice/video) are kept for telemetry. The full chain is in [`docs/AI-GUARD.md`](docs/AI-GUARD.md); the envelope itself uses `secure_channel_session_public_key`, `key_id`, `digest` and `data_bytes`.
 
 ### 3.4 Telemetry
 
@@ -147,7 +154,9 @@ Tencent TMSDK (`tmsdkobf`, 478 classes, `libTmsdk-2.0.16-mfr.so`) maintains its 
 | Scan start (`startScan`, `startScanAsScene`, `install_scan`, `sync_scan`) | local engine run; cloud lookup for unknown packages | `virus-engine.sec.miui.com/virus/scan` |
 | Threat detected | upload one `ResultReportData` per hit | `virus-engine.sec.miui.com/virus/localResult/report` |
 | Fraud-flagged app | report package metadata | `fraud-detection.engine.miui.com/hyperos/fraud/app/report` |
-| AI Guard enabled + call in progress | ASR, detection request per utterance | `detection-aigc.engine.miui.com` |
+| AI Guard enabled + call in progress | full-duplex audio capture (mic + far-end loopback); transcript flushed every 10 s | `detection-aigc.engine.miui.com/ai/audio/text/pcc/detection` |
+| AI Guard enabled + video call in progress | 3 s screen recording, upload, 2 s idle, repeat for up to 10 min | `detection-aigc.engine.miui.com/aiVideo/pcc/detection` |
+| User marks a detection as a false positive | full raw PCM + transcript, or the MP4 clip | `/ai/audio/text/pcc/rbi`, `/aiVideo/pcc/rbi` |
 | App lifecycle / exception | OneTrack batch | `tracking.miui.com` |
 | Tencent SDK internal schedule | RCPC queries | `rcpc-sdk-access.m.qq.com` |
 
@@ -193,6 +202,8 @@ Responses are decrypted with the same key; `F1/n.java` throws if `EncryptVersion
 ### 5.3 Confidential-computing envelope (AI Guard)
 
 `EncryptedData` carries a version, a session public key, a `key_id`, a digest and the ciphertext. The actual sealing is delegated to `N1.a` (a confidential-computing binder service), so the key does not live in the APK. This is the only scheme in the package that is not defeated by possession of the APK.
+
+Payloads: `{requestId,text}` for audio detection, `{streamName:"clip.mp4",fileBase64,requestId}` for video detection, `{requestId,audioPCM,audioText}` and `{fileType:"MP4",fileBase64,requestId}` for feedback. Base64 is applied before sealing, so a 3-second 1 Mbit/s clip is ≈375 KB on disk and ≈500 KB in the JSON body.
 
 ### 5.4 Response handling
 
@@ -300,11 +311,13 @@ No `CertificatePinner`; virus definitions and whitelists are accepted over the p
 **CWE-345** Insufficient Verification of Data Authenticity
 **Fix** sign the whitelist with an offline key and verify before replacing the table; refuse updates that fail.
 
-### F-05 — AI Guard captures call audio and transcribes it · **Medium** (privacy)
+### F-05 — Full-duplex call audio capture and upload · **High** (privacy) · CVSS 7.1 `AV:N/AC:L/PR:H/UI:N/S:C/C:H/I:N/A:N`
 
-`AudioRecordingCallback` on `SOURCE_VOICE_CALL`, ASR, then text to Xiaomi engines. Consent is delegated to the security centre (`ai_guard_function_switch`, privacy policy `privacy.mi.com/AIalert`), and the transport uses a per-session confidential-computing envelope. The design is deliberate, but the capability is the most sensitive in the package and deserves the strongest disclosure and audit.
-**CWE-359**
-**Fix** keep the feature off by default at the OS level, show a persistent indicator during capture, retain transcripts only in memory, publish a per-request audit.
+`p098o1/h.java:49` opens two recorders at once: `AudioRecord` source `VOICE_COMMUNICATION` (near end) and a loopback `AudioRecord` built through the hidden `AudioPolicy` API with `ROUTE_FLAG_RENDER|ROUTE_FLAG_LOOP_BACK` (`p098o1/f.java:27`). Both streams are averaged sample by sample into one 16 kHz mono channel, so **the remote party is captured as well as the device owner**. The mixed stream is pushed to the bound Xiaomi recogniser (`p098o1/b.java`, `postData`) and flushed as text to `/ai/audio/text/pcc/detection` every 10 s; every PCM buffer is also appended to `files/feedback01.tmp`, which is uploaded in full only if the user later marks a false positive (`AlertActivity.java:170`).
+
+The pipeline depends on `CAPTURE_AUDIO_OUTPUT`, `CAPTURE_VOICE_COMMUNICATION_OUTPUT` and `MODIFY_AUDIO_ROUTING` — all `signature|privileged`. A normal app cannot construct it even with `RECORD_AUDIO`.
+**CWE-359, CWE-693**
+**Fix** require a per-call opt-in, show a capture indicator for the duration, delete `feedback01.tmp` unconditionally, and state which party's audio is transmitted to which service.
 
 ### F-06 — Third-party engine with its own network channel · **Medium**
 
@@ -332,14 +345,23 @@ Every custom exported component requires `Guard_Provider` (`signature|privileged
 
 `31000401489` for the main component, `2882303761517522561` for the AI module. Events are split across two analytics identities; this should be reflected in the privacy notice and in any data-map.
 
+### F-11 — Screen recording without the system capture indicator · **High** (privacy) · CVSS 7.1 `AV:N/AC:L/PR:H/UI:N/S:C/C:H/I:N/A:N`
+
+`p079l1/d.java:45` obtains a `MediaProjection` by reflecting into `IMediaProjectionManager.createProjection()` instead of calling `createScreenCaptureIntent()`. That path is gated by `MANAGE_MEDIA_PROJECTION` (`signature`), so the platform consent dialog and the “screen is being recorded” indicator never appear. `p079l1/a.java` then records the whole display with `MediaRecorder` (H.264, 720×1280, 24 fps, 1 Mbit/s) in 3-second clips; `AiGuardService$p` uploads each clip to `/aiVideo/pcc/detection` and repeats every 5 seconds for up to 10 minutes (`AiGuardService.java:1466`).
+
+The foreground notification reads “通话防护中 / Call protection is on” and does not mention capture. The one-time AI Guard notice does disclose “video frames or clips”, so the collection is disclosed at enrolment — but the user cannot tell, at any given moment, that the screen is being recorded.
+
+**CWE-359, CWE-693**
+**Fix** use the system consent flow per session, surface the platform capture indicator, and make the notification state what is being recorded.
+
 ---
 
 ## 11. Privacy and compliance observations
 
 1. **Purpose limitation.** Scanning installed packages and reporting only flagged ones is proportionate; full-inventory reporting does not occur.
-2. **Transparency.** The package is invisible; consent for AI Guard is collected by the security centre, not here. The policy link exists (`privacy.mi.com/AIalert`) but is reachable only through the security centre flow.
+2. **Transparency.** The package is invisible. AI Guard discloses collection once at enrolment (`ai_guard_privacy_policy_message`, plus a screen-recording dialog) and posts a persistent “call protection” notification — but neither the notification nor any system indicator tells the user that capture is active on a given call, and the remote party is never informed.
 3. **Third-party disclosure.** Location of the risk decision is Xiaomi, but the scanning engine and one network channel are Tencent; the SDK's `imeiHash` is a third-party identifier.
-4. **Data minimisation.** Cloud scan is hash-based (good). Threat reports include `uuid`, `device`, `hitFiles` and full APK hashes (necessary for triage, but retained server-side beyond audit).
+4. **Data minimisation.** Cloud scan is hash-based (good). Threat reports include `uuid`, `device`, `hitFiles` and full APK hashes (necessary for triage, but retained server-side beyond audit). AI Guard is the outlier: it uploads complete 3-second screen clips every 5 seconds, and on feedback the entire raw call audio — the least minimised data in the package.
 5. **Retention.** Local databases and logs were not exhaustively mapped; server-side retention is unknown.
 6. **Region gating.** `isAllowConnectNetwork()` is a genuine control, but it exists to satisfy regional policy, not user choice.
 
@@ -355,7 +377,7 @@ Every custom exported component requires `Guard_Provider` (`signature|privileged
 | Payload protection | MD5→AES-ECB, RSA-1024 public key | static AES-CBC key in APK; confidential computing for AI |
 | Client authentication | none (public-key "signature") | hardcoded salt + MD5, no nonce |
 | Consent | `device_provisioned` only | delegated to security centre; feature flag off by default |
-| Data reported | IMEI, IMSI, ICCID, location, app inventory | scan metadata, flagged threats, AI transcripts |
+| Data reported | IMEI, IMSI, ICCID, location, app inventory | scan metadata, flagged threats, call transcripts, 3 s screen clips, raw PCM on feedback |
 | Endpoint read-back | blocked by WAF URL ACL | application-level 10012 |
 
 The pair shows two different failure modes in the same OEM image: the carrier agent fails on **access control and transport**, the security component fails on **cryptographic design**. Both rely on secrets that ship inside the APK.
@@ -400,13 +422,14 @@ evidence/data-fields.csv                field-level collection map
 evidence/hashes.txt                     hashes, signer, static key fingerprint
 evidence/strings/dex-strings.txt        55,409 printable strings
 evidence/strings/urls.txt               20 URIs
-evidence/decompiled/                    26 classes referenced by this report
+evidence/decompiled/                    36 classes referenced by this report
 evidence/network/probe-log.txt          endpoint probe transcript
 tools/sign_request.py                   offline MD5 signature reproduction
 tools/extract_crypto.py                 static AES key derivation (fingerprint only)
 docs/WIRE-FORMAT.md                     signature, envelope, endpoint formats
 docs/DATA-FLOWS.md                      scan → report → AI guard paths
 docs/COMPONENTS.md                      component surface and protection levels
+docs/AI-GUARD.md                       AI Guard capture chain, cadence and disclosure analysis
 docs/METHOD.md                          tooling and reproduction
 ```
 
