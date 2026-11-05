@@ -1,0 +1,131 @@
+{
+  "schema": "android-app-profile/1",
+  "generated": "2026-11-05",
+  "provenance": {
+    "source": "APK image extracted from a Xiaomi 17 running HyperOS, supplied by the requester",
+    "role": "pre-installed system security component (com.miui.guardprovider); antivirus scanning, URL/Wi-Fi detection and AI fraud detection",
+    "corroboration": [
+      "signs with the same Xiaomi platform certificate as other MIUI/HyperOS system packages",
+      "references miui.os.Build, com.miui.securitycenter.* and MIUI/HyperOS-only settings keys",
+      "no LAUNCHER activity"
+    ]
+  },
+  "identity": {
+    "label": "System security components",
+    "package": "com.miui.guardprovider",
+    "version_name": "2.5.6-20251106.0",
+    "version_code": 256,
+    "build_date": "2025-11-06",
+    "min_sdk": 32,
+    "target_sdk": 36,
+    "compile_sdk": 36,
+    "shared_user_id": null,
+    "launcher_activity": null,
+    "application_class": "com.miui.guardprovider.GuardApplication",
+    "processes": ["com.miui.guardprovider", "com.miui.guardprovider:ai"]
+  },
+  "artefact": {
+    "file": "系统安全组件_2.5.6-20251106.0.apk",
+    "size_bytes": 20361708,
+    "sha256": "b56c0b72ca5b442220b1c49632b7d70112813cb76cec9b1c21f4b5f49d77af92",
+    "md5": "a9774e719d6246bfbc2b6ca23793380b",
+    "dex": {"name": "classes.dex", "size_bytes": 7436564, "sha256": "3f815b838ca6d843cd57016bc95b9855a3e157329656883bdd762697a6f87d9d"},
+    "abis": ["arm64-v8a"],
+    "native_libs": 12,
+    "assets": ["flamingo.dat", "avlsdk", "mdetector", "licence.conf", "licence1.conf", "PublicSuffixDatabase.list", "40706.dat", "70003.amf"]
+  },
+  "signing": {
+    "subject": "EMAILADDRESS=miui@xiaomi.com, CN=MIUI, OU=MIUI, O=Xiaomi, L=Beijing, ST=Beijing, C=CN",
+    "serial": "0xe552a8ecb9011b7c",
+    "not_before": "2011-12-06T03:26:26Z",
+    "not_after": "2039-04-23T03:26:26Z",
+    "key": "RSA-2048",
+    "sha1": "7B:6D:C7:07:9C:34:73:9C:E8:11:59:71:9F:B5:EB:61:D2:A0:32:25",
+    "sha256": "C9:00:9D:01:EB:F9:F5:D0:30:2B:C7:1B:2F:E9:AA:9A:47:A4:32:BB:A1:73:08:A3:11:1B:75:D7:B2:14:90:25",
+    "note": "identical to SystemHelper 3.0.1; both are platform-signed HyperOS/MIUI system packages"
+  },
+  "permissions": {
+    "count": 37,
+    "high_risk": [
+      "android.permission.CAPTURE_AUDIO_OUTPUT",
+      "android.permission.CAPTURE_VOICE_COMMUNICATION_OUTPUT",
+      "android.permission.CAPTURE_VIDEO_OUTPUT",
+      "android.permission.RECORD_AUDIO",
+      "android.permission.MANAGE_MEDIA_PROJECTION",
+      "android.permission.MANAGE_EXTERNAL_STORAGE",
+      "android.permission.MODIFY_PHONE_STATE",
+      "android.permission.WRITE_SECURE_SETTINGS",
+      "android.permission.READ_PRIVILEGED_PHONE_STATE",
+      "android.permission.INTERACT_ACROSS_USERS",
+      "android.permission.QUERY_ALL_PACKAGES",
+      "android.permission.SYSTEM_ALERT_WINDOW"
+    ],
+    "declared": [
+      {"name": "com.miui.guardprovider.permission.Guard_Provider", "protection_level": "signature|privileged (0x12)", "used": true},
+      {"name": "com.miui.guardprovider.permission.TMF_SHARK", "protection_level": "signature (0x2)", "used": true},
+      {"name": "com.miui.guardprovider.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION", "protection_level": "signature (0x2)", "used": true}
+    ]
+  },
+  "components": {
+    "total": 19,
+    "custom": [
+      {"name": "com.miui.guardprovider.GuardProvider", "type": "provider", "exported": true, "permission": "com.miui.guardprovider.permission.Guard_Provider", "authorities": "guard"},
+      {"name": "com.miui.guardprovider.manager.SecurityService", "type": "service", "exported": true, "permission": "com.miui.guardprovider.permission.Guard_Provider"},
+      {"name": "com.miui.guardprovider.aiguard.AiGuardService", "type": "service", "exported": true, "permission": "com.miui.guardprovider.permission.Guard_Provider", "process": ":ai"},
+      {"name": "com.miui.guardprovider.aiguard.PermissionRequestActivity", "type": "activity", "exported": true, "permission": "com.miui.guardprovider.permission.Guard_Provider", "process": ":ai"},
+      {"name": "com.miui.guardprovider.aiguard.AlertActivity", "type": "activity", "exported": false, "permission": null, "process": ":ai"}
+    ],
+    "framework": "14 AndroidX/Room/WorkManager components, two of them exported under android.permission.DUMP / BIND_JOB_SERVICE"
+  },
+  "sdk_inventory": [
+    {"name": "Tencent TMSDK", "version": "2.0.16", "evidence": "libTmsdk-2.0.16-mfr.so, 478 tmsdkobf classes, assets/mdetector", "network": "rcpc-sdk-access.m.qq.com, tools.3g.qq.com"},
+    {"name": "Antiy AVL", "version": "unknown", "evidence": "libavlasys.so, libavlm.so, libavlurl.so, assets/avlsdk, licence.conf", "network": "via com.miui.guardprovider engine"},
+    {"name": "Xiaomi OneTrack", "version": "bundled", "evidence": "com.xiaomi.onetrack (178 classes), appIds 31000401489 / 2882303761517522561", "network": "tracking.miui.com"},
+    {"name": "xCrash", "version": "unknown", "evidence": "libxcrash.so, libxcrash_dumper.so", "network": "none (local crash capture)"},
+    {"name": "Flamingo / AiCapability", "version": "unknown", "evidence": "libflamingo.so, META-INF/flamingo.dat, flamingo-android_cnRelease metadata", "network": "cloud scan / fraud detection"},
+    {"name": "Kotlin", "version": "2.2.x", "evidence": "kotlin-tooling-metadata.json, Metadata mv=2.2.0"},
+    {"name": "AndroidX / Room / WorkManager / OkHttp / Gson", "version": "current", "evidence": "package layout"}
+  ],
+  "protocol": {
+    "plaintext_api": {
+      "signature": "MD5_hex_upper(base64(sorted(params) + '&' + SALT))",
+      "salt": "94e6cec2-19dc-4bb6-823c-613f72d3ea16",
+      "device_binding": "mi = MD5 twice over (ANDROID_ID + '-' + SALT)",
+      "content_type": "application/x-www-form-urlencoded; charset=UTF-8 or application/json",
+      "authentication": "static shared secret only; no per-device credential, no nonce"
+    },
+    "encrypted_api": {
+      "cipher": "AES/CBC/PKCS5Padding",
+      "key": "static 16-byte key derived from META-INF/flamingo.dat (sha256 229c6c76...)",
+      "iv": "random 16 bytes prepended to ciphertext",
+      "header": "EncryptVersion",
+      "integrity": "no MAC; response whitelist accepted without signature check"
+    },
+    "ai_api": {
+      "envelope": "com.miui.securitycenter.confidentialcomputing.EncryptedData",
+      "fields": ["version", "secure_channel_session_public_key", "key_id", "digest", "data_bytes"],
+      "note": "per-session public key and key id, stronger than the static-key envelope"
+    }
+  },
+  "endpoints": [
+    {"host": "https://api.sec.miui.com", "paths": ["/antivirus/viruses", "/antivirus/whitelist"], "auth": "signed form POST (static salt)"},
+    {"host": "https://virus-engine.sec.miui.com", "paths": ["/virus/scan", "/virus/localResult/report"], "auth": "signed + AES envelope + app UUID"},
+    {"host": "https://fraud-detection.engine.miui.com", "paths": ["/hyperos/fraud/app/report"], "auth": "signed + AES envelope + app UUID"},
+    {"host": "https://detection-aigc.engine.miui.com", "paths": ["/ai/audio/text/pcc/detection", "/ai/audio/text/pcc/rbi", "/aiVideo/pcc/rbi"], "auth": "confidential-computing envelope"},
+    {"host": "https://rcpc-sdk-access.m.qq.com", "paths": ["Tencent RCPC channel"], "auth": "Tencent SDK"},
+    {"host": "http://tools.3g.qq.com", "paths": ["/wifi/cw.html", "/j/sslstrip"], "auth": "none; cleartext explicitly permitted"},
+    {"host": "https://tracking.miui.com", "paths": ["OneTrack"], "auth": "appId"}
+  ],
+  "findings": [
+    {"id": "F-01", "severity": "high", "title": "static AES key for cloud-scan/fraud-report envelope is recoverable from the APK", "cwe": "CWE-321"},
+    {"id": "F-02", "severity": "high", "title": "request signing uses a hardcoded salt and MD5; no per-device credential or nonce", "cwe": "CWE-798"},
+    {"id": "F-03", "severity": "medium", "title": "no certificate pinning while virus definitions and whitelist are downloaded and applied", "cwe": "CWE-295"},
+    {"id": "F-04", "severity": "medium", "title": "whitelist accepted without signature verification (disabled stub b())", "cwe": "CWE-345"},
+    {"id": "F-05", "severity": "medium", "title": "AI Guard captures call/IM audio and sends recognised text to Xiaomi engines", "cwe": "CWE-359"},
+    {"id": "F-06", "severity": "medium", "title": "bundled Tencent TMSDK with independent network channel and hashed IMEI", "cwe": "CWE-1104"},
+    {"id": "F-07", "severity": "low", "title": "cleartext permitted for an unused staging host and for tools.3g.qq.com", "cwe": "CWE-319"},
+    {"id": "F-08", "severity": "low", "title": "stale requestLegacyExternalStorage together with MANAGE_EXTERNAL_STORAGE", "cwe": "CWE-732"},
+    {"id": "F-09", "severity": "info", "title": "exported components correctly protected by signature|privileged permission", "cwe": null},
+    {"id": "F-10", "severity": "info", "title": "OneTrack analytics initialised with two appIds", "cwe": null}
+  ]
+}

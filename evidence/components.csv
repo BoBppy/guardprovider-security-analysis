@@ -1,0 +1,20 @@
+component,type,exported,permission,process,note
+com.miui.guardprovider.aiguard.AlertActivity,activity,false,,:ai,:ai process; warning dialog; not exported
+com.miui.guardprovider.aiguard.PermissionRequestActivity,activity,true,com.miui.guardprovider.permission.Guard_Provider,:ai,:ai process; consent UI; signature|privileged
+com.miui.guardprovider.manager.SecurityService,service,true,com.miui.guardprovider.permission.Guard_Provider,,AIDL antivirus/URL-scan API; signature|privileged
+com.miui.guardprovider.aiguard.AiGuardService,service,true,com.miui.guardprovider.permission.Guard_Provider,:ai,:ai process; AI fraud detection; signature|privileged
+androidx.work.impl.background.systemalarm.SystemAlarmService,service,false,,,
+androidx.work.impl.background.systemjob.SystemJobService,service,true,android.permission.BIND_JOB_SERVICE,,
+androidx.work.impl.foreground.SystemForegroundService,service,false,,,
+androidx.room.MultiInstanceInvalidationService,service,false,,,
+androidx.work.impl.utils.ForceStopRunnable$BroadcastReceiver,receiver,false,,,
+androidx.work.impl.background.systemalarm.ConstraintProxy$BatteryChargingProxy,receiver,false,,,
+androidx.work.impl.background.systemalarm.ConstraintProxy$BatteryNotLowProxy,receiver,false,,,
+androidx.work.impl.background.systemalarm.ConstraintProxy$StorageNotLowProxy,receiver,false,,,
+androidx.work.impl.background.systemalarm.ConstraintProxy$NetworkStateProxy,receiver,false,,,
+androidx.work.impl.background.systemalarm.RescheduleReceiver,receiver,false,,,
+androidx.work.impl.background.systemalarm.ConstraintProxyUpdateReceiver,receiver,false,,,
+androidx.work.impl.diagnostics.DiagnosticsReceiver,receiver,true,android.permission.DUMP,,
+androidx.profileinstaller.ProfileInstallReceiver,receiver,true,android.permission.DUMP,,
+com.miui.guardprovider.GuardProvider,provider,true,com.miui.guardprovider.permission.Guard_Provider,,"content provider authority 'guard'; tables engine_info_list, virus, install_scan, sync_scan; signature|privileged"
+androidx.startup.InitializationProvider,provider,false,,,

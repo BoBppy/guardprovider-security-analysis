@@ -1,0 +1,43 @@
+Endpoint probe log
+==================
+Date        : 2026-11-05 16:05 (GMT+8)
+Targets     : the four first-party hosts referenced by com.miui.guardprovider
+Method      : DNS, one HEAD / and one GET per path, no parameters, no credentials,
+              no POST body, no path enumeration.
+
+1. HEAD / (root)
+   https://api.sec.miui.com/                  -> 404, Server: openresty, application/json
+   https://virus-engine.sec.miui.com/         -> 404, Server: openresty, application/json
+   https://fraud-detection.engine.miui.com/   -> 404, Server: openresty, application/json
+   https://detection-aigc.engine.miui.com/    -> 404, Server: openresty, application/json
+
+   No directory listing, no framework banner beyond the gateway.
+
+2. GET /antivirus/viruses   (no signature parameters)
+   HTTP/1.1 200
+   Server: openresty
+   Content-Type: application/json;charset=UTF-8
+   Set-Cookie: mifes=...; HttpOnly
+   {"error_code":"10012","error":"Illegal request","request":"/antivirus/viruses"}
+
+3. GET /antivirus/whitelist (no signature parameters)
+   HTTP/1.1 200
+   {"error_code":"10012","error":"Illegal request","request":"/antivirus/whitelist"}
+
+4. GET /virus/scan          (POST-only endpoint)
+   HTTP/1.1 405
+   Allow: POST
+   {"timestamp":"2026-11-05T08:05:48.179+00:00","status":405,
+    "error":"Method Not Allowed","path":"/virus/scan"}
+
+Interpretation
+--------------
+* All four hosts terminate TLS at an openresty gateway and answer JSON.
+* api.sec.miui.com performs an application-level request check and returns
+  error_code 10012 ("Illegal request") when the signature parameters are absent.
+  The check is real, but the signing material is shipped inside the APK (see
+  REPORT.md F-02).
+* virus-engine.sec.miui.com exposes method-level routing (405 with Allow: POST),
+  which confirms a Spring-style backend behind the gateway.
+* No unauthenticated read of threat data was obtained. No attempt was made to
+  forge a signature and no POST was sent.

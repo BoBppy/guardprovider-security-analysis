@@ -1,0 +1,54 @@
+package: com.miui.guardprovider
+version: 2.5.6-20251106.0 / code 256
+minSdk: 32 targetSdk: 36 compileSdk: 36
+application:name = com.miui.guardprovider.GuardApplication
+application:label = @7F10004A
+application:allowBackup = false
+application:largeHeap = true
+application:requestLegacyExternalStorage = true
+application:networkSecurityConfig = @7F130000
+application:extractNativeLibs = false
+
+permissions (37):
+  android.permission.READ_PHONE_STATE
+  android.permission.READ_PRIVILEGED_PHONE_STATE
+  android.permission.INTERNET
+  android.permission.READ_EXTERNAL_STORAGE
+  android.permission.WRITE_EXTERNAL_STORAGE
+  android.permission.PEERS_MAC_ADDRESS
+  com.miui.securitycenter.permission.ACCESS_SECURITY_CENTER_PROVIDER
+  android.permission.RECEIVE_BOOT_COMPLETED
+  com.android.settings.permission.CLOUD_SETTINGS_PROVIDER
+  android.permission.INTERACT_ACROSS_USERS
+  android.permission.ACCESS_MTP
+  android.permission.MANAGE_EXTERNAL_STORAGE
+  android.permission.QUERY_ALL_PACKAGES
+  miui.permission.READ_AND_WIRTE_PERMISSION_MANAGER
+  com.miui.guardprovider.permission.Guard_Provider
+  android.permission.ACCESS_WIFI_STATE
+  android.permission.ACCESS_NETWORK_STATE
+  android.permission.BROADCAST_STICKY
+  com.miui.guardprovider.permission.TMF_SHARK
+  android.permission.MODIFY_PHONE_STATE
+  android.permission.SYSTEM_ALERT_WINDOW
+  android.permission.FOREGROUND_SERVICE_MICROPHONE
+  android.permission.POST_NOTIFICATIONS
+  android.permission.VIBRATE
+  android.permission.WRITE_SECURE_SETTINGS
+  com.miui.securitycenter.permission.READ_APP_BEHAVIORS
+  android.permission.RECORD_AUDIO
+  android.permission.CAPTURE_AUDIO_OUTPUT
+  android.permission.CAPTURE_VOICE_COMMUNICATION_OUTPUT
+  android.permission.MODIFY_AUDIO_ROUTING
+  android.permission.MANAGE_MEDIA_PROJECTION
+  android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION
+  android.permission.CAPTURE_VIDEO_OUTPUT
+  android.permission.WAKE_LOCK
+  android.permission.FOREGROUND_SERVICE
+  com.miui.guardprovider.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+  xiaomi.permission.aivision.MI_AI_TRANSLATE
+
+declared permissions:
+  com.miui.guardprovider.permission.Guard_Provider level=0x00000012
+  com.miui.guardprovider.permission.TMF_SHARK level=0x00000002
+  com.miui.guardprovider.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION level=0x00000002

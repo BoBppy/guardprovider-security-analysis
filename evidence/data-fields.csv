@@ -1,0 +1,43 @@
+﻿dataset,field,source,transform,notes
+request-common,device,ro.product.device (system property),none,sent on every signed API call
+request-common,carrier,ro.carrier.name,none,
+request-common,region,ro.product.mod_device,none,
+request-common,miuiVersion,MIUI-/Build.VERSION.INCREMENTAL,none,used as OS fingerprint
+request-common,versionType,miui.os.Build stable/development/alpha,none,
+request-common,appVersion,constant "1",none,
+request-common,mi,MD5(Settings.Secure[android_id] + "-" + salt) then uppercase MD5,none,device binding value
+request-common,sign,MD5(Base64(sorted params + "&" + hardcoded salt)),uppercase hex,static shared secret inside APK
+threat-report,threatLevel,engine verdict,none,/virus/localResult/report
+threat-report,threatName,engine verdict,none,
+threat-report,malwareCodeFeature,engine verdict,none,
+threat-report,version,engine version,none,
+threat-report,packageName,PackageManager,none,identifies the flagged app
+threat-report,appName,PackageManager,none,
+threat-report,versionCode,PackageInfo,none,
+threat-report,apkCertificateMD5,PackageInfo.signatures,none,
+threat-report,apkCertificateSHA256,PackageInfo.signatures,none,
+threat-report,mfFileSHA256,APK parse,none,
+threat-report,apkMd5,file hash,none,
+threat-report,apkSha256,file hash,none,
+threat-report,miuiVersion,Build,none,
+threat-report,androidVersion,Build.VERSION.SDK_INT,none,
+threat-report,device,Build.MODEL,none,
+threat-report,uuid,generated/persisted per install,none,links reports across time
+threat-report,hitFiles,scanner output,none,matched file paths
+cloud-scan,packageName,PackageManager,none,/virus/scan; hashes only, APK is not uploaded
+cloud-scan,versionCode,PackageInfo,none,
+cloud-scan,apkCertificateMD5,PackageInfo.signatures,none,
+cloud-scan,apkCertificateSHA256,PackageInfo.signatures,none,
+cloud-scan,mfFileSHA256,APK parse,none,
+ai-guard,conversation text,ASR of call/IM audio (VOICE_CALL capture),encrypted with confidential-computing envelope,/ai/audio/text/pcc/detection
+ai-guard,audio risk feedback,user feedback,none,/ai/audio/text/pcc/rbi
+ai-guard,video risk feedback,user feedback,none,/aiVideo/pcc/rbi
+ai-guard,scene counters,WeChat/QQ/phone voice+video detection counts,none,telemetry of usage of the feature
+ai-guard,secure_channel_session_public_key,generated per session,none,EncryptedData envelope
+ai-guard,key_id,key management service,none,
+ai-guard,digest,payload digest,none,integrity hint, not a signature
+analytics,app lifecycle events,OneTrack autoTrackActivityAction,none,two appIds 31000401489 and 2882303761517522561
+analytics,appId/channel,OneTrack Configuration,none,channel = package name
+analytics,exception traces,OneTrack exceptionCatcherEnable,none,crash telemetry
+third-party,imeiHash,TMSDK ExtraInfoFetcher,none,Tencent SDK; hashed IMEI
+third-party,wifi portal probe,http://tools.3g.qq.com/wifi/cw.html,none,cleartext permitted by network security config

@@ -1,0 +1,20 @@
+ https://rcpc-sdk-access.m.qq.com
+!http://tools.3g.qq.com/j/sslstrip
+!https://virus-engine.sec.miui.com
+#http://tools.3g.qq.com/wifi/cw.html
+%https://flash.sec.miui.com/detect/app
+&http://miwifi.com/diagnosis/index.html
+&https://detection-aigc.engine.miui.com
+'https://fraud-detection.engine.miui.com
+*http://schemas.android.com/apk/res/android
+*https://api.sec.miui.com/antivirus/viruses
+,https://api.sec.miui.com/antivirus/whitelist
+<https://github.com/google/gson/blob/main/Troubleshooting.md#
+Don't access or initialise WorkManager from directAware components. See https://developer.android.com/training/articles/direct-boot
+Kotlin reflection is not yet supported for synthetic Java properties. Please follow/upvote https://youtrack.jetbrains.com/issue/KT-55980
+[[Beg]detectNetworkState-urlApprove:[http://tools.3g.qq.com/wifi/cw.html]customHeader:[Meri]
+http://
+http://m.qq.com
+https://
+https://privacy.mi.com/AIalert/
+onAutoCloseCallback is null but it should  have been set before use. Please file a bug against Room at: https://issuetracker.google.com/issues/new?component=413107&template=1096568
